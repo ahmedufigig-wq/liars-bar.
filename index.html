@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>بار الكذّابين</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;background:#0d0907;color:#eadcc3;font-family:Tahoma,"Noto Sans Arabic",Arial,sans-serif;overflow:hidden}
+#app{height:100%;display:flex;flex-direction:column;padding:8px;background:radial-gradient(ellipse at 50% 30%,#3b2416 0,#150d08 75%)}
+#bots{display:flex}
+.seat{flex:1;margin:3px;padding:8px 4px;border:2px solid #5a3a22;border-radius:12px;background:#24160e;text-align:center;font-size:12px;line-height:1.5}
+.seat b{display:block;font-size:15px}
+.seat.turn{border-color:#e0a030;box-shadow:0 0 14px #e0a030}
+.seat.dead{opacity:.3;filter:grayscale(1)}
+#table{flex:1;margin:6px 3px;border:6px solid #6b4226;border-radius:28px;background:#103222;box-shadow:inset 0 0 40px #000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px;min-height:0}
+#want{font-size:13px;color:#cdbb95}
+#pile{min-height:84px;display:flex;align-items:center;justify-content:center}
+#msg{font-size:16px;min-height:44px;color:#f3e3c0;line-height:1.5}
+.card{width:54px;height:78px;border-radius:8px;background:#f1e6cf;color:#222;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;margin:3px;font-weight:bold;border:2px solid #8a6a3a;flex:0 0 auto;transition:transform .15s}
+.card .s{font-size:24px;line-height:1}.card .t{font-size:11px;margin-top:4px}
+.card.red{color:#b01e1e}.card.joker{color:#6a2aa8}
+.card.sel{transform:translateY(-14px);border-color:#e0a030;box-shadow:0 0 10px #e0a030}
+.card.back{background:repeating-linear-gradient(45deg,#7a1c1c,#7a1c1c 6px,#5a1212 6px,#5a1212 12px);border-color:#c9a050}
+.card.big{width:64px;height:92px;margin:6px}
+#me{text-align:center;font-size:13px}
+#hand{display:flex;overflow-x:auto;padding:18px 4px 4px;justify-content:center;min-height:106px}
+#btns{display:flex}
+.btn{flex:1;margin:4px;padding:14px;border:0;border-radius:12px;font-size:18px;font-weight:bold;color:#fff;font-family:inherit}
+#play{background:#2f7a3d}#liar{background:#a8201a}.btn:disabled{opacity:.3}
+.ov{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:9;text-align:center;padding:20px;line-height:1.7}
+.ov.on{display:flex}
+.ov .btn{flex:none;width:80%;max-width:300px;background:#a8201a;margin-top:14px}
+#cylw{position:relative;width:180px;height:190px;margin:14px}
+#ptr{position:absolute;top:-8px;left:0;right:0;font-size:26px;color:#e0a030;z-index:2}
+#cyl{position:absolute;top:18px;left:5px;width:170px;height:170px;border-radius:50%;background:radial-gradient(#666,#2a2a2a);border:6px solid #999;transition:transform 1.8s cubic-bezier(.2,.8,.2,1)}
+.ch{position:absolute;width:34px;height:34px;border-radius:50%;background:#0b0b0b;left:calc(50% - 17px);top:calc(50% - 17px);border:2px solid #777}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bots"></div>
+  <div id="table"><div id="want"></div><div id="pile"></div><div id="msg"></div></div>
+  <div id="me"></div>
+  <div id="hand"></div>
+  <div id="btns"><button class="btn" id="play">ضع الأوراق</button><button class="btn" id="liar">كذّاب! 🗣️</button></div>
+</div>
+
+<div class="ov on" id="menu">
+  <h1>🍺 بار الكذّابين</h1>
+  <p>لكل جولة ورقة مطلوبة. ضع 1 إلى 3 أوراق مقلوبة وادّعِ أنها المطلوبة، أو اتّهم اللاعب السابق بالكذب.<br>من يخسر المواجهة يسحب الزناد في مسدسه: رصاصة واحدة في ست غرف.<br>الجوكر يطابق أي ورقة. آخر ناجٍ يفوز.</p>
+  <button class="btn" id="go">ابدأ اللعب</button>
+</div>
+
+<div class="ov" id="roul">
+  <h2 id="rt"></h2>
+  <div id="cylw"><div id="ptr">▼</div><div id="cyl"></div></div>
+  <button class="btn" id="trig" style="display:none">اسحب الزناد 🔫</button>
+  <h2 id="rr"></h2>
+</div>
+
+<div class="ov" id="end"><h1 id="et"></h1><button class="btn" id="again">العب مجدداً</button></div>
+
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+var T = { K: { n: 'ملك', s: '♚' }, Q: { n: 'ملكة', s: '♛' }, A: { n: 'آس', s: '♠' }, J: { n: 'جوكر', s: '★' } };
+var BOTS = [
+  { name: 'جاك',  av: '🤠', bold: 0,    bluff: 0.15, desc: 'حذر' },
+  { name: 'ريكس', av: '😈', bold: 0.2,  bluff: 0.45, desc: 'جريء' },
+  { name: 'لونا', av: '🧐', bold: 0.08, bluff: 0.3,  desc: 'محسوب' }
+];
+var P, cur, table, last, sel = [], myTurn = false, rev = false, over = false, ang = 0, AC;
+
+/* ---------- الصوت والاهتزاز ---------- */
+function ctx() { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} return AC; }
+function snd(f, d, type, vol) {
+  try {
+    var a = ctx(), o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'square'; o.frequency.value = f; g.gain.value = vol || 0.2;
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + d);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + d);
+  } catch (e) {}
+}
+function bang() {
+  try {
+    var a = ctx(), n = Math.floor(a.sampleRate * 0.6), b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+    var s = a.createBufferSource(); s.buffer = b; s.connect(a.destination); s.start();
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(450);
+}
+
+/* ---------- منطق اللعبة ---------- */
+function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+function nextAlive(i) { do { i = (i + 1) % P.length; } while (!P[i].alive); return i; }
+function aliveCount() { return P.filter(function (p) { return p.alive; }).length; }
+function risk(p) { return p.alive ? Math.round(100 / (6 - p.pulls)) + '%' : '💀'; }
+function say(t) { $('msg').textContent = t; }
+function isGood(c) { return c === table || c === 'J'; }
+
+function start() {
+  ctx();
+  P = [{ name: 'أنت', av: '🙂', human: true }].concat(BOTS.map(function (b) { return Object.assign({}, b); }));
+  P.forEach(function (p) { p.alive = true; p.pulls = 0; p.bullet = Math.floor(Math.random() * 6); p.hand = []; });
+  over = false;
+  $('menu').classList.remove('on'); $('end').classList.remove('on');
+  round(0);
+}
+
+function round(starter) {
+  var deck = [];
+  ['K', 'Q', 'A'].forEach(function (t) { for (var i = 0; i < 6; i++) deck.push(t); });
+  deck.push('J', 'J'); shuffle(deck);
+  P.forEach(function (p) { p.hand = []; });
+  for (var k = 0; k < 5; k++) P.forEach(function (p) { if (p.alive) p.hand.push(deck.pop()); });
+  P[0].hand.sort();
+  table = ['K', 'Q', 'A'][Math.floor(Math.random() * 3)];
+  last = null; sel = []; rev = false; cur = starter;
+  say('جولة جديدة! الورقة المطلوبة: ' + T[table].n);
+  render();
+  setTimeout(turn, 1200);
+}
+
+async function turn() {
+  if (over) return;
+  render();
+  var p = P[cur], forced = !!last && p.hand.length === 0;
+  if (p.human) {
+    myTurn = true;
+    say(forced ? 'لا أوراق لديك، عليك أن تقول كذّاب!' : 'دورك: اختر 1-3 أوراق وادّعِ أنها «' + T[table].n + '» أو اتّهم السابق.');
+    render(); return;
+  }
+  myTurn = false; render();
+  await sleep(1300);
+  var d = ai(p, forced);
+  if (d.call) await call(cur); else play(cur, d.cards);
+}
+
+function play(i, cards) {
+  var p = P[i];
+  cards.forEach(function (c) { p.hand.splice(p.hand.indexOf(c), 1); });
+  last = { p: i, cards: cards }; rev = false; sel = []; myTurn = false;
+  say(p.name + ' وضع ' + cards.length + ' ورقة مقلوبة وادّعى أنها «' + T[table].n + '»');
+  snd(300, 0.08);
+  cur = nextAlive(i);
+  turn();
+}
+
+async function call(i) {
+  myTurn = false; render();
+  var acc = P[i], tgt = P[last.p];
+  say(acc.name + ' يصرخ في ' + tgt.name + ': كذّاب! 🗣️');
+  snd(180, 0.35, 'sawtooth', 0.3);
+  await sleep(1200);
+  rev = true; render();
+  var liar = last.cards.some(function (c) { return !isGood(c); });
+  var loser = liar ? last.p : i;
+  say(liar ? tgt.name + ' كان يكذب! 🤥' : tgt.name + ' كان صادقاً! ' + acc.name + ' يدفع الثمن 😬');
+  await sleep(2400);
+  await roulette(loser);
+  if (!P[0].alive || aliveCount() < 2) return finish();
+  round(P[loser].alive ? loser : nextAlive(loser));
+}
+
+/* ---------- الروليت الروسي ---------- */
+async function roulette(i) {
+  var p = P[i], o = $('roul'), t = $('trig');
+  o.style.background = ''; $('rr').textContent = ''; o.classList.add('on');
+  $('rt').textContent = p.name + ' يدوّر الأسطوانة... (الخطر ' + risk(p) + ')';
+  ang += 720 + Math.random() * 360; $('cyl').style.transform = 'rotate(' + ang + 'deg)';
+  for (var k = 0; k < 10; k++) { snd(900, 0.03, 'square', 0.1); await sleep(180); }
+  if (p.human) {
+    $('rt').textContent = 'حان دورك... اسحب الزناد!';
+    await new Promise(function (r) { t.style.display = 'block'; t.onclick = r; });
+    t.style.display = 'none';
+  } else await sleep(1000);
+  var dead = p.pulls === p.bullet; p.pulls++;
+  if (dead) {
+    bang(); p.alive = false; o.style.background = 'rgba(150,0,0,.96)';
+    $('rr').textContent = '💥 بانغ! ' + p.name + ' خرج من اللعبة 💀';
+  } else {
+    snd(120, 0.12, 'square', 0.4);
+    $('rr').textContent = 'كليك... ' + p.name + ' نجا 😮‍💨';
+  }
+  await sleep(2300);
+  o.classList.remove('on');
+  return dead;
+}
+
+function finish() {
+  over = true; myTurn = false; render();
+  $('et').textContent = P[0].alive ? '🏆 أنت آخر الناجين! البار لك' : '💀 أُقصيتَ... البار يربح هذه المرة';
+  $('end').classList.add('on');
+}
+
+/* ---------- ذكاء البوتات ---------- */
+function ai(p, forced) {
+  var good = p.hand.filter(isGood), bad = p.hand.filter(function (c) { return !isGood(c); });
+  if (last) {
+    var n = last.cards.length, call = forced || n + good.length > 8; // مستحيل رياضياً: 8 بطاقات مطابقة فقط
+    if (!call) {
+      var s = 0.18 + p.bold + 0.14 * (n - 1)
+            + (P[last.p].hand.length <= 1 ? 0.12 : 0)   // لاعب شارف على التخلص من أوراقه
+            + (good.length === 0 ? 0.1 : 0)             // لا أملك المطلوب فالادعاء مشبوه
+            + (Math.random() * 0.15 - 0.05);
+      call = Math.random() < Math.min(s, 0.9);
+    }
+    if (call) return { call: true };
+  }
+  var pick = [];
+  if (good.length) {
+    pick = good.slice(0, Math.min(good.length, 1 + Math.floor(Math.random() * (p.bold > 0.1 ? 3 : 2))));
+    if (bad.length && pick.length < 3 && Math.random() < p.bluff) pick.push(bad[0]);
+  } else {
+    pick = bad.slice(0, Math.min(bad.length, Math.random() < p.bluff ? 2 : 1));
+  }
+  return { call: false, cards: pick };
+}
+
+/* ---------- الواجهة ---------- */
+function cardH(c, i, s) {
+  var cls = 'card' + (c === 'J' ? ' joker' : (c === 'K' || c === 'Q') ? ' red' : '') + (s ? ' sel' : '');
+  return '<div class="' + cls + '"' + (i >= 0 ? ' onclick="tog(' + i + ')"' : '') + '><span class="s">' + T[c].s + '</span><span class="t">' + T[c].n + '</span></div>';
+}
+function tog(i) {
+  if (!myTurn) return;
+  var k = sel.indexOf(i);
+  if (k >= 0) sel.splice(k, 1); else if (sel.length < 3) sel.push(i);
+  snd(500, 0.04, 'square', 0.08); render();
+}
+function render() {
+  if (!P) return;
+  $('bots').innerHTML = P.slice(1).map(function (p, k) {
+    return '<div class="seat' + (p.alive ? '' : ' dead') + (cur === k + 1 && p.alive && !over ? ' turn' : '') + '"><div style="font-size:30px">' + p.av + '</div><b>' + p.name + '</b>' + p.desc + '<br>🃏 ' + p.hand.length + ' · 🔫 ' + risk(p) + '</div>';
+  }).join('');
+  $('want').innerHTML = 'الورقة المطلوبة<br>' + (table ? cardH(table, -1, false).replace('class="card', 'class="card big') : '');
+  $('pile').innerHTML = last
+    ? (rev ? last.cards.map(function (c) { return cardH(c, -1, false); }).join('')
+           : last.cards.map(function () { return '<div class="card back"></div>'; }).join(''))
+    : '';
+  $('me').textContent = 'أنت · 🃏 ' + P[0].hand.length + ' · 🔫 خطر ' + risk(P[0]);
+  $('hand').innerHTML = P[0].hand.map(function (c, i) { return cardH(c, i, sel.indexOf(i) >= 0); }).join('');
+  $('play').disabled = !(myTurn && sel.length >= 1 && sel.length <= 3);
+  $('liar').disabled = !(myTurn && last);
+}
+
+for (var q = 0; q < 6; q++) {
+  var ch = document.createElement('div'); ch.className = 'ch';
+  ch.style.transform = 'rotate(' + (q * 60) + 'deg) translateY(-58px)';
+  $('cyl').appendChild(ch);
+}
+$('go').onclick = start;
+$('again').onclick = start;
+$('play').onclick = function () {
+  if (!myTurn || !sel.length) return;
+  var cards = sel.map(function (i) { return P[0].hand[i]; });
+  play(0, cards);
+};
+$('liar').onclick = function () { if (myTurn && last) call(0); };
+document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+</script>
+</body>
+</html>
